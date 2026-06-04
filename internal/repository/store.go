@@ -153,6 +153,19 @@ func save(path string, s *state) error {
 	return os.Rename(tmp, path)
 }
 
+// persister abstracts where the whole-state snapshot lives (JSON file or DB row).
+// The repository logic is identical regardless of backend.
+type persister interface {
+	load() (*state, error)
+	save(*state) error
+}
+
+// filePersister stores the state as an atomic JSON file on disk.
+type filePersister struct{ path string }
+
+func (f filePersister) load() (*state, error) { return load(f.path) }
+func (f filePersister) save(st *state) error  { return save(f.path, st) }
+
 // newID returns a short, collision-resistant identifier with the given prefix.
 func newID(prefix string) string {
 	b := make([]byte, 5)

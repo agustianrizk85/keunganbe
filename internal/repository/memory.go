@@ -7,26 +7,40 @@ import (
 	"greenpark/finance/internal/domain"
 )
 
-// fileRepository is a mutex-guarded, file-backed FinanceRepository. The full
-// state is held in memory for fast reads and flushed to disk on every write.
+// fileRepository is a mutex-guarded FinanceRepository. The full state is held in
+// memory for fast reads and flushed to its persister (file or DB) on every write.
 type fileRepository struct {
-	mu   sync.RWMutex
-	path string
-	st   *state
+	mu sync.RWMutex
+	p  persister
+	st *state
 }
 
 // NewRepository returns a FinanceRepository persisted to the given JSON file
 // path. An empty path keeps everything in memory only (handy for tests).
 func NewRepository(path string) (FinanceRepository, error) {
-	st, err := load(path)
+	return newRepository(filePersister{path: path})
+}
+
+// NewPostgresRepository returns a FinanceRepository that persists the whole-state
+// snapshot to a single PostgreSQL row.
+func NewPostgresRepository(dsn string) (FinanceRepository, error) {
+	p, err := newPGPersister(dsn)
 	if err != nil {
 		return nil, err
 	}
-	return &fileRepository{path: path, st: st}, nil
+	return newRepository(p)
 }
 
-// persist flushes the current state to disk. Callers must hold the write lock.
-func (r *fileRepository) persist() error { return save(r.path, r.st) }
+func newRepository(p persister) (FinanceRepository, error) {
+	st, err := p.load()
+	if err != nil {
+		return nil, err
+	}
+	return &fileRepository{p: p, st: st}, nil
+}
+
+// persist flushes the current state. Callers must hold the write lock.
+func (r *fileRepository) persist() error { return r.p.save(r.st) }
 
 /* ---------------------------- reads ---------------------------- */
 
