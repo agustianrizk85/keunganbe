@@ -7,6 +7,9 @@ import (
 	"greenpark/finance/internal/domain"
 )
 
+// maxHistory caps the rollback-able import history.
+const maxHistory = 20
+
 // fileRepository is a mutex-guarded FinanceRepository. The full state is held in
 // memory for fast reads and flushed to its persister (file or DB) on every write.
 type fileRepository struct {
@@ -42,318 +45,93 @@ func newRepository(p persister) (FinanceRepository, error) {
 // persist flushes the current state. Callers must hold the write lock.
 func (r *fileRepository) persist() error { return r.p.save(r.st) }
 
-/* ---------------------------- reads ---------------------------- */
+/* ------------------------------- reads ------------------------------- */
 
-func (r *fileRepository) Projects() []domain.Project {
+func (r *fileRepository) Dashboard() domain.Dashboard {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return clone(r.st.Projects)
+	return r.st.Data
 }
 
-func (r *fileRepository) ProjectByID(id string) (domain.Project, error) {
+func (r *fileRepository) Revision() int64 {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for _, p := range r.st.Projects {
-		if p.ID == id {
-			return p, nil
+	return r.st.Rev
+}
+
+func (r *fileRepository) ImportHistory() []domain.ImportRecord {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]domain.ImportRecord, len(r.st.History))
+	for i, e := range r.st.History {
+		out[i] = e.Record
+	}
+	return out
+}
+
+/* ------------------------- ingest / lifecycle ------------------------- */
+
+// ApplyImport replaces the live dashboard with the imported data, records a
+// rollback snapshot + history entry (newest first, capped) and bumps the rev.
+func (r *fileRepository) ApplyImport(in ImportInput) (domain.ImportRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	rec := domain.ImportRecord{
+		ID: in.ID, Time: in.Time, Filename: in.Filename, By: in.By, Summary: in.Summary,
+	}
+	entry := importEntry{Record: rec, Prev: r.st.Data}
+	r.st.History = append([]importEntry{entry}, r.st.History...)
+	if len(r.st.History) > maxHistory {
+		r.st.History = r.st.History[:maxHistory]
+	}
+	r.st.Data = in.Data
+	r.st.Rev++
+	return rec, r.persist()
+}
+
+// ResetData clears the dashboard back to empty (reversible via history).
+func (r *fileRepository) ResetData(by, when string) (domain.ImportRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	rec := domain.ImportRecord{
+		ID: newID("rst"), Time: when, Filename: "Reset data", By: by,
+	}
+	entry := importEntry{Record: rec, Prev: r.st.Data}
+	r.st.History = append([]importEntry{entry}, r.st.History...)
+	if len(r.st.History) > maxHistory {
+		r.st.History = r.st.History[:maxHistory]
+	}
+	r.st.Data = emptyDashboard()
+	r.st.Rev++
+	return rec, r.persist()
+}
+
+// Rollback restores the dashboard to its state before the given import id.
+func (r *fileRepository) Rollback(id string) (domain.ImportRecord, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	idx := -1
+	for i, e := range r.st.History {
+		if e.Record.ID == id {
+			idx = i
+			break
 		}
 	}
-	return domain.Project{}, ErrNotFound
-}
-
-func (r *fileRepository) Receivables() []domain.Receivable {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.Receivables)
-}
-
-func (r *fileRepository) ReceivableType() []domain.MetaItem {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.ReceivableType)
-}
-
-func (r *fileRepository) AgingMeta() []domain.MetaItem {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.AgingMeta)
-}
-
-func (r *fileRepository) Payables() []domain.Payable {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.Payables)
-}
-
-func (r *fileRepository) PriorityMeta() []domain.MetaItem {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.PriorityMeta)
-}
-
-func (r *fileRepository) Facilities() []domain.Facility {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.Facilities)
-}
-
-func (r *fileRepository) CostStructure() []domain.CostCategory {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.CostStructure)
-}
-
-func (r *fileRepository) Treasury() domain.Treasury {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.st.Treasury
-}
-
-func (r *fileRepository) AIInsights() []domain.AIInsight {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.AIInsights)
-}
-
-func (r *fileRepository) Decisions() []domain.Decision {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.Decisions)
-}
-
-func (r *fileRepository) CashflowTrend() []domain.CashflowPoint {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.CashflowTrend)
-}
-
-func (r *fileRepository) KPITable() []domain.KPI {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.KPITable)
-}
-
-func (r *fileRepository) Triggers() []domain.Trigger {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return clone(r.st.Triggers)
-}
-
-/* ---------------------------- singleton / whole-array writes ---------------------------- */
-
-func (r *fileRepository) SetTreasury(t domain.Treasury) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.st.Treasury = t
-	return r.persist()
-}
-
-func (r *fileRepository) SetCostStructure(c []domain.CostCategory) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.st.CostStructure = c
-	return r.persist()
-}
-
-func (r *fileRepository) SetCashflowTrend(c []domain.CashflowPoint) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.st.CashflowTrend = c
-	return r.persist()
-}
-
-func (r *fileRepository) SetReceivableType(m []domain.MetaItem) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.st.ReceivableType = m
-	return r.persist()
-}
-
-func (r *fileRepository) SetAgingMeta(m []domain.MetaItem) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.st.AgingMeta = m
-	return r.persist()
-}
-
-func (r *fileRepository) SetPriorityMeta(m []domain.MetaItem) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.st.PriorityMeta = m
-	return r.persist()
-}
-
-/* ---------------------------- collection writes ---------------------------- */
-
-func (r *fileRepository) SaveProject(p domain.Project) (domain.Project, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if p.EntID == "" {
-		p.EntID = newID("prj")
+	if idx < 0 {
+		return domain.ImportRecord{}, ErrNotFound
 	}
-	r.st.Projects = upsertEntity(r.st.Projects, p)
-	return p, r.persist()
+	undone := r.st.History[idx].Record
+	r.st.Data = r.st.History[idx].Prev
+	// Drop this entry and everything newer than it (they no longer apply).
+	r.st.History = r.st.History[idx+1:]
+	r.st.Rev++
+	return undone, r.persist()
 }
 
-func (r *fileRepository) DeleteProject(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.Projects, id)
-	r.st.Projects = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-func (r *fileRepository) SaveReceivable(v domain.Receivable) (domain.Receivable, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if v.EntID == "" {
-		v.EntID = newID("ar")
-	}
-	r.st.Receivables = upsertEntity(r.st.Receivables, v)
-	return v, r.persist()
-}
-
-func (r *fileRepository) DeleteReceivable(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.Receivables, id)
-	r.st.Receivables = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-func (r *fileRepository) SavePayable(v domain.Payable) (domain.Payable, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if v.EntID == "" {
-		v.EntID = newID("ap")
-	}
-	r.st.Payables = upsertEntity(r.st.Payables, v)
-	return v, r.persist()
-}
-
-func (r *fileRepository) DeletePayable(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.Payables, id)
-	r.st.Payables = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-func (r *fileRepository) SaveFacility(v domain.Facility) (domain.Facility, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if v.EntID == "" {
-		v.EntID = newID("fac")
-	}
-	r.st.Facilities = upsertEntity(r.st.Facilities, v)
-	return v, r.persist()
-}
-
-func (r *fileRepository) DeleteFacility(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.Facilities, id)
-	r.st.Facilities = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-func (r *fileRepository) SaveAIInsight(v domain.AIInsight) (domain.AIInsight, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if v.EntID == "" {
-		v.EntID = newID("ai")
-	}
-	r.st.AIInsights = upsertEntity(r.st.AIInsights, v)
-	return v, r.persist()
-}
-
-func (r *fileRepository) DeleteAIInsight(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.AIInsights, id)
-	r.st.AIInsights = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-func (r *fileRepository) SaveDecision(v domain.Decision) (domain.Decision, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if v.EntID == "" {
-		v.EntID = newID("dec")
-	}
-	r.st.Decisions = upsertEntity(r.st.Decisions, v)
-	return v, r.persist()
-}
-
-func (r *fileRepository) DeleteDecision(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.Decisions, id)
-	r.st.Decisions = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-func (r *fileRepository) SaveKPI(k domain.KPI) (domain.KPI, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if k.EntID == "" {
-		k.EntID = newID("kpi")
-	}
-	r.st.KPITable = upsertEntity(r.st.KPITable, k)
-	return k, r.persist()
-}
-
-func (r *fileRepository) DeleteKPI(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.KPITable, id)
-	r.st.KPITable = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-func (r *fileRepository) SaveTrigger(t domain.Trigger) (domain.Trigger, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if t.EntID == "" {
-		t.EntID = newID("trg")
-	}
-	r.st.Triggers = upsertEntity(r.st.Triggers, t)
-	return t, r.persist()
-}
-
-func (r *fileRepository) DeleteTrigger(id string) (bool, error) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	next, ok := deleteEntity(r.st.Triggers, id)
-	r.st.Triggers = next
-	if !ok {
-		return false, nil
-	}
-	return true, r.persist()
-}
-
-/* ---------------------------- users ---------------------------- */
+/* ------------------------------- users ------------------------------- */
 
 func (r *fileRepository) Users() []domain.User {
 	r.mu.RLock()

@@ -19,17 +19,18 @@ func TestPostgresStateIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewPostgresRepository: %v", err)
 	}
-	if len(repo.Projects()) == 0 {
-		t.Fatal("expected seeded projects")
-	}
-	before := len(repo.Projects())
+	beforeRev := repo.Revision()
 
-	saved, err := repo.SaveProject(domain.Project{Name: "PG Persist"})
+	rec, err := repo.ApplyImport(ImportInput{
+		ID: "imp-test", Time: "now", Filename: "t.xlsx", By: "qa",
+		Summary: domain.ImportSummary{AkadCount: 3, NilaiAkad: 1500},
+		Data:    domain.Dashboard{Period: "Akad 2026", Summary: domain.Summary{AkadCount: 3, NilaiAkad: 1500}},
+	})
 	if err != nil {
-		t.Fatalf("SaveProject: %v", err)
+		t.Fatalf("ApplyImport: %v", err)
 	}
-	if saved.EntID == "" {
-		t.Fatal("SaveProject did not assign an id")
+	if rec.ID != "imp-test" {
+		t.Fatalf("unexpected record id %q", rec.ID)
 	}
 
 	// Reopen (simulates a restart) → data persisted.
@@ -37,11 +38,10 @@ func TestPostgresStateIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen: %v", err)
 	}
-	if got := len(repo2.Projects()); got != before+1 {
-		t.Fatalf("after restart projects = %d, want %d", got, before+1)
+	if got := repo2.Dashboard().Summary.AkadCount; got != 3 {
+		t.Fatalf("after restart akad = %d, want 3", got)
 	}
-
-	if ok, err := repo2.DeleteProject(saved.EntID); err != nil || !ok {
-		t.Errorf("DeleteProject ok=%v err=%v", ok, err)
+	if repo2.Revision() <= beforeRev {
+		t.Fatalf("revision did not advance: before=%d after=%d", beforeRev, repo2.Revision())
 	}
 }

@@ -1,9 +1,9 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
-	"greenpark/finance/internal/domain"
 	"greenpark/finance/internal/repository"
 )
 
@@ -13,67 +13,42 @@ func newSvc(t *testing.T) FinanceService {
 	if err != nil {
 		t.Fatalf("repo init: %v", err)
 	}
-	return New(repo)
+	return New(repo, Options{FocusYear: 2026})
 }
 
-func TestSummaryDerivation(t *testing.T) {
+func TestEmptyDashboard(t *testing.T) {
 	svc := newSvc(t)
-	s := svc.Summary()
-
-	if s.TotalRevenue <= 0 {
-		t.Fatalf("expected positive total revenue, got %v", s.TotalRevenue)
+	d := svc.Dashboard()
+	if d.Summary.AkadCount != 0 {
+		t.Fatalf("fresh store should have 0 akad, got %d", d.Summary.AkadCount)
 	}
-	if s.CollectionRate < 0 || s.CollectionRate > 100 {
-		t.Errorf("collection rate out of range: %d", s.CollectionRate)
-	}
-	if s.NetMargin <= 0 || s.NetMargin > 100 {
-		t.Errorf("net margin out of range: %d", s.NetMargin)
-	}
-	if s.Runway <= 0 {
-		t.Errorf("expected positive runway, got %v", s.Runway)
-	}
-	// Two receivables are seeded in the >90 day bucket.
-	if s.Critical != 2 {
-		t.Errorf("expected 2 critical (>90d) receivables, got %d", s.Critical)
-	}
-	if s.OverdueRisk != "Tinggi" {
-		t.Errorf("expected overdue risk Tinggi, got %q", s.OverdueRisk)
+	if !strings.Contains(d.Period, "Belum ada data") {
+		t.Errorf("expected empty-state period, got %q", d.Period)
 	}
 }
 
-func TestProjectByIDNotFound(t *testing.T) {
+// A small akad-only XLSX-like sheet, fed through the Google-Sheets path, should
+// produce a non-empty summary after approval.
+func TestApproveSheetsFlow(t *testing.T) {
 	svc := newSvc(t)
-	if _, err := svc.ProjectByID("does-not-exist"); err == nil {
-		t.Fatal("expected error for unknown project id")
+	data := map[string][][]string{
+		"Data Akad 2026": {
+			{"No.", "GP", "Proyek", "Nama Konsumen", "Blok", "Tgl Booking", "DP", "Plafon KPR", "Cara Bayar", "Bank", "Tgl Akad", "Bulan Akad", "Tahun", "Durasi", "Nama Sales"},
+			{"1", "GP 3", "VERSAW", "Budi", "D8", "15-Des-2025", "Rp. 50.000.000", "Rp. 500.000.000", "KPR", "BSI Otista", "3-Jan-2026", "Januari", "2026", "19", "Ayu"},
+			{"2", "GP 3", "VERSAW", "Sari", "C7", "10-Des-2025", "Rp. 0", "Rp. 450.000.000", "KPR", "BSI Otista", "5-Feb-2026", "Februari", "2026", "57", "Erwin"},
+		},
 	}
-	if _, err := svc.ProjectByID("aurora"); err != nil {
-		t.Fatalf("expected to find seeded project, got %v", err)
+	if _, err := svc.ApproveSheets(data, "test", "qa"); err != nil {
+		t.Fatalf("ApproveSheets: %v", err)
 	}
-}
-
-func TestSaveAndDeleteReceivableFlowsToSummary(t *testing.T) {
-	svc := newSvc(t)
-	before := svc.Summary().OutstandingAR
-
-	saved, err := svc.SaveReceivable(domain.Receivable{
-		ID: "AR-TEST", Project: "Greenpark Aurora", Customer: "Test", Type: "kpr",
-		Amount: 500, Bucket: "current", SLA: "ok", Owner: "QA",
-	})
-	if err != nil {
-		t.Fatalf("save: %v", err)
+	d := svc.Dashboard()
+	if d.Summary.AkadCount != 2 {
+		t.Fatalf("expected 2 akad, got %d", d.Summary.AkadCount)
 	}
-	if saved.EntID == "" {
-		t.Fatal("expected a generated _id on create")
+	if d.Summary.NilaiAkad != 950 {
+		t.Fatalf("expected nilai 950 juta, got %v", d.Summary.NilaiAkad)
 	}
-	if got := svc.Summary().OutstandingAR; got != before+500 {
-		t.Errorf("expected AR to grow by 500, before=%v after=%v", before, got)
-	}
-
-	ok, err := svc.DeleteReceivable(saved.EntID)
-	if err != nil || !ok {
-		t.Fatalf("delete: ok=%v err=%v", ok, err)
-	}
-	if got := svc.Summary().OutstandingAR; got != before {
-		t.Errorf("expected AR to return to %v, got %v", before, got)
+	if svc.Revision() == 0 {
+		t.Error("revision should advance after approve")
 	}
 }

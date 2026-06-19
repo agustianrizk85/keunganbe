@@ -16,6 +16,7 @@ import (
 
 	"greenpark/finance/internal/auth"
 	"greenpark/finance/internal/config"
+	"greenpark/finance/internal/gsheets"
 	"greenpark/finance/internal/repository"
 	"greenpark/finance/internal/service"
 	httptransport "greenpark/finance/internal/transport/http"
@@ -43,10 +44,27 @@ func main() {
 		}
 		log.Println("finance: using file store")
 	}
-	svc := service.New(repo)
+	svc := service.New(repo, service.Options{FocusYear: cfg.FocusYear, TargetAkad: cfg.TargetAkad})
 	authSvc := auth.New(repo, cfg.SessionTTL)
-	handler := httptransport.NewHandler(svc, authSvc)
+
+	syncClient, err := gsheets.New(cfg.GoogleCreds)
+	if err != nil {
+		log.Fatalf("finance: google credentials: %v", err)
+	}
+	if syncClient != nil {
+		log.Printf("finance: Google Sheets sync enabled (sheet %s)", cfg.SheetID)
+	} else {
+		log.Println("finance: Google Sheets sync disabled (set FINANCE_GOOGLE_CREDENTIALS to enable)")
+	}
+
+	handler := httptransport.NewHandler(svc, authSvc, syncClient, cfg.SheetID, cfg.SyncSec)
 	router := httptransport.NewRouter(handler, cfg.AllowOrigin)
+
+	// Realtime push + background auto-sync scheduler.
+	ctx, cancelBg := context.WithCancel(context.Background())
+	defer cancelBg()
+	handler.StartRealtime()
+	handler.StartAutoSync(ctx)
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,

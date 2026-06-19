@@ -1,3 +1,8 @@
 
 # persisted master data
 data/
+
+# service-account credentials (never commit)
+*credentials*.json
+*service-account*.json
+keen-scion-*.json

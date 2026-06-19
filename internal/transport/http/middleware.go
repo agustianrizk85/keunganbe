@@ -1,7 +1,10 @@
 package http
 
 import (
+	"bufio"
+	"errors"
 	"log"
+	"net"
 	"net/http"
 	"time"
 )
@@ -42,6 +45,16 @@ type statusRecorder struct {
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
+}
+
+// Hijack lets the logger middleware sit in front of the WebSocket upgrade —
+// the upgrader needs the raw connection, so we pass it through.
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := r.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("underlying ResponseWriter is not a http.Hijacker")
+	}
+	return hj.Hijack()
 }
 
 // logger logs each request with method, path, status and latency.
