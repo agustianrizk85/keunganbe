@@ -62,6 +62,14 @@ func run(sheets map[string][][]string, opts Options) *Result {
 	opts = opts.withDefaults()
 	p := parseAll(sheets)
 	res := &Result{Issues: p.issues, Sheets: p.info}
+	// Always marshal these as [] (not null) so JSON consumers can safely
+	// .map()/.length over them — a nil Go slice would serialize to null.
+	if res.Issues == nil {
+		res.Issues = []string{}
+	}
+	if res.Sheets == nil {
+		res.Sheets = []SheetInfo{}
+	}
 	res.Preview = assemble(p, opts, res)
 	s := res.Preview.Summary
 	res.Headline = domain.ImportSummary{
