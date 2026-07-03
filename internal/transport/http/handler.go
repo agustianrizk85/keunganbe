@@ -12,26 +12,38 @@ import (
 	"greenpark/finance/internal/service"
 )
 
+// ARSource is one project's AR input spreadsheet (project code → spreadsheet ID).
+type ARSource struct {
+	Code string
+	ID   string
+}
+
 // Handler holds the dependencies for the HTTP handlers.
 type Handler struct {
-	svc     service.FinanceService
-	auth    *auth.Service
-	sync    *gsheets.Client // nil when Google Sheets sync is not configured
-	sheetID string
-	auto    *autoSync
-	hub     *wsHub
+	svc       service.FinanceService
+	auth      *auth.Service
+	sync      *gsheets.Client // nil when Google Sheets sync is not configured
+	sheetID   string
+	prSheetID string // default procurement (PR) spreadsheet for the purchasing sync ("" = none until configured in UI)
+	arSheets  []ARSource
+	auto      *autoSync
+	hub       *wsHub
 }
 
 // NewHandler creates a Handler bound to the service, auth, and (optional) Google
-// Sheets sync client.
-func NewHandler(svc service.FinanceService, authSvc *auth.Service, sync *gsheets.Client, sheetID string, intervalSec int) *Handler {
+// Sheets sync client. prSheetID is the default procurement (PR) spreadsheet for
+// the independent purchasing sync; arSheets lists the per-project AR input
+// spreadsheets.
+func NewHandler(svc service.FinanceService, authSvc *auth.Service, sync *gsheets.Client, sheetID, prSheetID string, arSheets []ARSource, intervalSec int) *Handler {
 	return &Handler{
-		svc:     svc,
-		auth:    authSvc,
-		sync:    sync,
-		sheetID: sheetID,
-		auto:    newAutoSync(intervalSec),
-		hub:     newWSHub(),
+		svc:       svc,
+		auth:      authSvc,
+		sync:      sync,
+		sheetID:   sheetID,
+		prSheetID: prSheetID,
+		arSheets:  arSheets,
+		auto:      newAutoSync(intervalSec),
+		hub:       newWSHub(),
 	}
 }
 

@@ -39,7 +39,7 @@ type Result struct {
 // SheetInfo reports how one tab was classified and how many rows it contributed.
 type SheetInfo struct {
 	Name string `json:"name"`
-	Kind string `json:"kind"` // akad | pipeline | skipped
+	Kind string `json:"kind"` // akad | pipeline | pr_po | pr_invoice | pr_payment | skipped
 	Rows int    `json:"rows"`
 }
 
@@ -73,14 +73,16 @@ func run(sheets map[string][][]string, opts Options) *Result {
 	res.Preview = assemble(p, opts, res)
 	s := res.Preview.Summary
 	res.Headline = domain.ImportSummary{
-		AkadCount:    s.AkadCount,
-		NilaiAkad:    s.NilaiAkad,
-		CashIn:       s.CashIn,
-		BookingCount: s.BookingCount,
-		ProsesCount:  s.ProsesCount,
-		BatalCount:   s.BatalCount,
-		KprShare:     s.KprShare,
-		Issues:       len(res.Issues),
+		AkadCount:     s.AkadCount,
+		NilaiAkad:     s.NilaiAkad,
+		CashIn:        s.CashIn,
+		BookingCount:  s.BookingCount,
+		ProsesCount:   s.ProsesCount,
+		BatalCount:    s.BatalCount,
+		KprShare:      s.KprShare,
+		Issues:        len(res.Issues),
+		PurchaseValue: res.Preview.Purchasing.Summary.POValue,
+		Outstanding:   res.Preview.Purchasing.Summary.Outstanding,
 	}
 	return res
 }

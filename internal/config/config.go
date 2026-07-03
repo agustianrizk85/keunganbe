@@ -5,6 +5,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,8 +19,15 @@ type Config struct {
 
 	// ---- Google Sheets ingest ----
 	GoogleCreds string // path to service-account JSON; empty disables sync
-	SheetID     string // spreadsheet ID to read all tabs from
+	SheetID     string // spreadsheet ID to read all tabs from (akad/KPR tracker)
+	PRSheetID   string // procurement (PR/pembelian) spreadsheet; merged into the akad sync ("" disables the PR section)
 	SyncSec     int    // auto-sync interval in seconds (0 = off)
+
+	// ---- AR (piutang) ingest ----
+	// One spreadsheet per project, "CODE=spreadsheetID" pairs (comma-separated),
+	// e.g. "GMN=abc,LHL=def". Each sheet's tabs are tagged with CODE so the AR
+	// dashboard can attribute rows to a project.
+	ARSheets []ARSheet
 
 	// ---- executive focus ----
 	FocusYear  int // year the dashboard summary focuses on
@@ -28,6 +36,38 @@ type Config struct {
 
 // defaultSheetID is the "Keuangan" akad/KPR spreadsheet shared with the team.
 const defaultSheetID = "10au7z7FR6SpWt1VJ5TTB7WJSbuIBauECCj9zf9xWlYw"
+
+// defaultPRSheetID is the "Pembelian (PR)" spreadsheet (PO/Faktur/Pembayaran
+// tabs) used as the procurement-section source. Share it with the service
+// account email for the sync to read it.
+const defaultPRSheetID = "1IV2PeGKG2cX451B8VHhtdrLF4eyayrQvGEUgWe_204Q"
+
+// ARSheet is one project's AR input spreadsheet (code → spreadsheet ID).
+type ARSheet struct {
+	Code string
+	ID   string
+}
+
+// parseARSheets reads "CODE=id,CODE=id" into ordered ARSheet pairs.
+func parseARSheets(s string) []ARSheet {
+	var out []ARSheet
+	for _, part := range strings.Split(s, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		eq := strings.IndexByte(part, '=')
+		if eq <= 0 {
+			continue
+		}
+		code := strings.TrimSpace(part[:eq])
+		id := strings.TrimSpace(part[eq+1:])
+		if code != "" && id != "" {
+			out = append(out, ARSheet{Code: code, ID: id})
+		}
+	}
+	return out
+}
 
 // Load reads configuration from the environment, applying defaults.
 func Load() Config {
@@ -39,6 +79,8 @@ func Load() Config {
 		SessionTTL:  12 * time.Hour,
 		GoogleCreds: getenv("FINANCE_GOOGLE_CREDENTIALS", ""),
 		SheetID:     getenv("FINANCE_GSHEET_ID", defaultSheetID),
+		PRSheetID:   getenv("FINANCE_PR_GSHEET_ID", defaultPRSheetID),
+		ARSheets:    parseARSheets(getenv("FINANCE_AR_GSHEETS", "")),
 		SyncSec:     getint("FINANCE_SYNC_INTERVAL_SEC", 0),
 		FocusYear:   getint("FINANCE_FOCUS_YEAR", 2026),
 		TargetAkad:  getint("FINANCE_TARGET_AKAD", 0),

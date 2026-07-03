@@ -27,6 +27,8 @@ func (o Options) ingest() ingest.Options {
 type FinanceService interface {
 	// reads
 	Dashboard() domain.Dashboard
+	AR() domain.ARData
+	Purchasing() domain.Purchasing
 	Summary() domain.Summary
 	Revision() int64
 	ImportHistory() []domain.ImportRecord
@@ -34,6 +36,18 @@ type FinanceService interface {
 	// ingest (no side effects)
 	PreviewImport(r io.Reader) (*ingest.Result, error)
 	PreviewSheets(data map[string][][]string) (*ingest.Result, error)
+
+	// AR (piutang) ingest from the per-project input sheets
+	PreviewAR(data map[string][][]string) domain.ARData
+	ApproveAR(data map[string][][]string) (domain.ARData, error)
+	ARSources() []domain.ARSource
+	SetARSources(src []domain.ARSource) error
+
+	// procurement (PR) ingest from the "Pembelian (PR)" spreadsheet
+	PreviewPurchasing(data map[string][][]string) ingest.PRResult
+	ApprovePurchasing(data map[string][][]string) (domain.Purchasing, error)
+	PRSheet() string
+	SetPRSheet(id string) error
 
 	// ingest (apply + record rollback snapshot)
 	ApproveImport(r io.Reader, filename, by string) (domain.ImportRecord, error)
@@ -58,6 +72,11 @@ func New(repo repository.FinanceRepository, opts Options) FinanceService {
 }
 
 func (s *financeService) Dashboard() domain.Dashboard          { return s.repo.Dashboard() }
+func (s *financeService) AR() domain.ARData                    { return s.repo.AR() }
 func (s *financeService) Summary() domain.Summary              { return s.repo.Dashboard().Summary }
 func (s *financeService) Revision() int64                      { return s.repo.Revision() }
 func (s *financeService) ImportHistory() []domain.ImportRecord { return s.repo.ImportHistory() }
+func (s *financeService) ARSources() []domain.ARSource         { return s.repo.ARSources() }
+func (s *financeService) SetARSources(src []domain.ARSource) error {
+	return s.repo.SetARSources(src)
+}

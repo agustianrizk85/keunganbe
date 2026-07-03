@@ -24,6 +24,20 @@ func NewRouter(h *Handler, allowOrigin string) http.Handler {
 	mux.HandleFunc("GET /api/dashboard", h.requireAuth(h.dashboard))
 	mux.HandleFunc("GET /api/summary", h.requireAuth(h.summary))
 	mux.HandleFunc("GET /api/version", h.requireAuth(h.version))
+	mux.HandleFunc("GET /api/ar", h.requireAuth(h.ar))
+	mux.HandleFunc("GET /api/ar/sheets", h.requireAuth(h.arSheetsGet))
+	mux.HandleFunc("GET /api/purchasing", h.requireAuth(h.purchasing))
+	mux.HandleFunc("GET /api/purchasing/sheet", h.requireAuth(h.prSheetGet))
+
+	// ---- AR (piutang) sync from per-project sheets (admin) ----
+	mux.HandleFunc("PUT /api/ar/sheets", h.requireAdmin(h.arSheetsSet))
+	mux.HandleFunc("POST /api/ar/sync-preview", h.requireAdmin(h.arSyncPreview))
+	mux.HandleFunc("POST /api/ar/sync-approve", h.requireAdmin(h.arSyncApprove))
+
+	// ---- procurement (PR/pembelian) sync from the "Pembelian (PR)" sheet (admin) ----
+	mux.HandleFunc("PUT /api/purchasing/sheet", h.requireAdmin(h.prSheetSet))
+	mux.HandleFunc("POST /api/purchasing/sync-preview", h.requireAdmin(h.purchasingSyncPreview))
+	mux.HandleFunc("POST /api/purchasing/sync-approve", h.requireAdmin(h.purchasingSyncApprove))
 
 	// ---- ingest: upload XLSX (admin) ----
 	mux.HandleFunc("POST /api/import/preview", h.requireAdmin(h.importPreview))

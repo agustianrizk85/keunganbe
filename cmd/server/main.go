@@ -53,11 +53,21 @@ func main() {
 	}
 	if syncClient != nil {
 		log.Printf("finance: Google Sheets sync enabled (sheet %s)", cfg.SheetID)
+		if cfg.PRSheetID != "" {
+			log.Printf("finance: procurement (PR) section enabled (sheet %s)", cfg.PRSheetID)
+		}
 	} else {
 		log.Println("finance: Google Sheets sync disabled (set FINANCE_GOOGLE_CREDENTIALS to enable)")
 	}
 
-	handler := httptransport.NewHandler(svc, authSvc, syncClient, cfg.SheetID, cfg.SyncSec)
+	arSources := make([]httptransport.ARSource, 0, len(cfg.ARSheets))
+	for _, s := range cfg.ARSheets {
+		arSources = append(arSources, httptransport.ARSource{Code: s.Code, ID: s.ID})
+	}
+	if len(arSources) > 0 {
+		log.Printf("finance: AR ingest enabled (%d project sheets)", len(arSources))
+	}
+	handler := httptransport.NewHandler(svc, authSvc, syncClient, cfg.SheetID, cfg.PRSheetID, arSources, cfg.SyncSec)
 	router := httptransport.NewRouter(handler, cfg.AllowOrigin)
 
 	// Realtime push + background auto-sync scheduler.

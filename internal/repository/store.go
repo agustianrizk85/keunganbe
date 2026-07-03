@@ -14,10 +14,14 @@ import (
 // import history, a monotonic data revision and the user accounts. The dashboard
 // is assembled at ingest time and stored whole (no master-data CRUD).
 type state struct {
-	Data    domain.Dashboard `json:"data"`
-	History []importEntry    `json:"history"`
-	Rev     int64            `json:"rev"`
-	Users   []storeUser      `json:"users"`
+	Data       domain.Dashboard  `json:"data"`
+	AR         domain.ARData     `json:"ar"`         // AR/piutang view (separate ingest, same revision)
+	ARSources  []domain.ARSource `json:"arSources"`  // per-project AR input sheets (UI-configured)
+	Purchasing domain.Purchasing `json:"purchasing"` // procurement (PR) view (separate ingest, same revision)
+	PRSheet    string            `json:"prSheet"`    // procurement input spreadsheet ID (UI-configured; "" = use env default)
+	History    []importEntry     `json:"history"`
+	Rev        int64             `json:"rev"`
+	Users      []storeUser       `json:"users"`
 }
 
 // importEntry is one history record plus the snapshot of the dashboard as it was
@@ -64,16 +68,19 @@ func emptyDashboard() domain.Dashboard {
 		AI:        []domain.AIInsight{},
 		Decisions: []domain.Decision{},
 		KPIs:      []domain.KPI{},
-		Triggers:  []domain.Trigger{},
+		Triggers:   []domain.Trigger{},
+		Purchasing: domain.EmptyPurchasing(),
 	}
 }
 
 // seedState builds a fresh store: empty dashboard + the default accounts.
 func seedState() *state {
 	return &state{
-		Data:    emptyDashboard(),
-		History: []importEntry{},
-		Users:   seedUsers(),
+		Data:       emptyDashboard(),
+		AR:         domain.EmptyARData(),
+		Purchasing: domain.EmptyPurchasing(),
+		History:    []importEntry{},
+		Users:      seedUsers(),
 	}
 }
 
@@ -97,6 +104,12 @@ func load(path string) (*state, error) {
 	s := &state{}
 	if err := json.Unmarshal(b, s); err != nil {
 		return nil, err
+	}
+	// Migration: procurement used to live inside the dashboard (Data.Purchasing),
+	// fed by the akad sync. It now has its own slot + independent sync flow — lift
+	// the existing view across once so the dashboard keeps showing it pre-resync.
+	if s.Purchasing.IsEmpty() && !s.Data.Purchasing.IsEmpty() {
+		s.Purchasing = s.Data.Purchasing
 	}
 	return s, nil
 }

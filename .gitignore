@@ -6,3 +6,8 @@ data/
 *credentials*.json
 *service-account*.json
 keen-scion-*.json
+
+# compiled binaries
+*.exe
+*.exe~
+*.test

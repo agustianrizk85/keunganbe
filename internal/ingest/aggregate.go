@@ -55,6 +55,7 @@ func assemble(p parsed, opts Options, res *Result) domain.Dashboard {
 		PayMix:    payMix,
 		Pipeline:  pipeline,
 		Akads:     recentAkad(focusAkad),
+		Purchasing: buildPurchasing(p),
 	}
 	deriveAll(&d)
 	nonNilSlices(&d)
@@ -105,6 +106,24 @@ func nonNilSlices(d *domain.Dashboard) {
 	}
 	if d.Triggers == nil {
 		d.Triggers = []domain.Trigger{}
+	}
+	if d.Purchasing.BySupplier == nil {
+		d.Purchasing.BySupplier = []domain.SupplierSpend{}
+	}
+	if d.Purchasing.ByProject == nil {
+		d.Purchasing.ByProject = []domain.ProjectSpend{}
+	}
+	if d.Purchasing.Monthly == nil {
+		d.Purchasing.Monthly = []domain.PurchaseMonth{}
+	}
+	if d.Purchasing.Orders == nil {
+		d.Purchasing.Orders = []domain.PurchaseDoc{}
+	}
+	if d.Purchasing.Invoices == nil {
+		d.Purchasing.Invoices = []domain.PurchaseDoc{}
+	}
+	if d.Purchasing.Payments == nil {
+		d.Purchasing.Payments = []domain.PaymentDoc{}
 	}
 }
 

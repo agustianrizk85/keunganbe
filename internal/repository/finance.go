@@ -29,11 +29,19 @@ type ImportInput struct {
 type FinanceRepository interface {
 	// reads
 	Dashboard() domain.Dashboard
+	AR() domain.ARData
+	ARSources() []domain.ARSource
+	Purchasing() domain.Purchasing
+	PRSheet() string
 	Revision() int64
 	ImportHistory() []domain.ImportRecord
 
 	// ingest / lifecycle writes
 	ApplyImport(in ImportInput) (domain.ImportRecord, error)
+	ApplyAR(ar domain.ARData) error
+	SetARSources(src []domain.ARSource) error
+	ApplyPurchasing(p domain.Purchasing) error
+	SetPRSheet(id string) error
 	ResetData(by, when string) (domain.ImportRecord, error)
 	Rollback(id string) (domain.ImportRecord, error)
 

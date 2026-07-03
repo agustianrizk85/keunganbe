@@ -50,13 +50,65 @@ func (r *fileRepository) persist() error { return r.p.save(r.st) }
 func (r *fileRepository) Dashboard() domain.Dashboard {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	return r.st.Data
+	d := r.st.Data
+	// Procurement is synced independently of the akad dashboard, so overlay the
+	// separately-stored Purchasing view onto the dashboard payload (keeping the
+	// single-call FE contract intact).
+	if !r.st.Purchasing.IsEmpty() {
+		d.Purchasing = r.st.Purchasing
+	}
+	return d
+}
+
+func (r *fileRepository) Purchasing() domain.Purchasing {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.st.Purchasing.IsEmpty() {
+		return domain.EmptyPurchasing()
+	}
+	return r.st.Purchasing
+}
+
+// PRSheet returns the UI-configured procurement input spreadsheet ID ("" when
+// none is set, so the handler falls back to the env default).
+func (r *fileRepository) PRSheet() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.st.PRSheet
+}
+
+func (r *fileRepository) AR() domain.ARData {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.st.AR.Sheets == nil && r.st.AR.Period == "" {
+		return domain.EmptyARData()
+	}
+	return r.st.AR
 }
 
 func (r *fileRepository) Revision() int64 {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return r.st.Rev
+}
+
+// ARSources returns the UI-configured per-project AR input sheets.
+func (r *fileRepository) ARSources() []domain.ARSource {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	out := make([]domain.ARSource, len(r.st.ARSources))
+	copy(out, r.st.ARSources)
+	return out
+}
+
+// SetARSources replaces the AR input sheet list and persists it. It does not
+// bump the data revision — saving config does not change the dashboard until a
+// sync runs.
+func (r *fileRepository) SetARSources(src []domain.ARSource) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.st.ARSources = append([]domain.ARSource(nil), src...)
+	return r.persist()
 }
 
 func (r *fileRepository) ImportHistory() []domain.ImportRecord {
@@ -88,6 +140,37 @@ func (r *fileRepository) ApplyImport(in ImportInput) (domain.ImportRecord, error
 	r.st.Data = in.Data
 	r.st.Rev++
 	return rec, r.persist()
+}
+
+// ApplyAR replaces the AR/piutang view and bumps the shared revision so the
+// realtime watcher pushes an update to connected dashboards. AR has no rollback
+// history (it is a derived read-only view, re-synced from the input sheets).
+func (r *fileRepository) ApplyAR(ar domain.ARData) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.st.AR = ar
+	r.st.Rev++
+	return r.persist()
+}
+
+// ApplyPurchasing replaces the procurement (PR) view and bumps the shared
+// revision so connected dashboards refresh. Like AR, it has no rollback history
+// (it is a derived view, re-synced from the procurement input sheet).
+func (r *fileRepository) ApplyPurchasing(p domain.Purchasing) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.st.Purchasing = p
+	r.st.Rev++
+	return r.persist()
+}
+
+// SetPRSheet stores the procurement input spreadsheet ID. It does not bump the
+// data revision — saving config does not change the dashboard until a sync runs.
+func (r *fileRepository) SetPRSheet(id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.st.PRSheet = id
+	return r.persist()
 }
 
 // ResetData clears the dashboard back to empty (reversible via history).

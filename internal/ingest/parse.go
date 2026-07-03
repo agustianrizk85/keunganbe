@@ -11,8 +11,11 @@ import (
 
 // parsed holds the extracted, deduplicated rows from all classified sheets.
 type parsed struct {
-	akads    []domain.AkadRow      // closed transactions (detail grain, deduped)
-	pipeline []pipelineRecord      // live bank-process rows (deduped)
+	akads    []domain.AkadRow    // closed transactions (detail grain, deduped)
+	pipeline []pipelineRecord    // live bank-process rows (deduped)
+	orders   []domain.PurchaseDoc // PO line items (procurement)
+	invoices []domain.PurchaseDoc // invoice line items (procurement)
+	payments []domain.PaymentDoc  // purchase payments (procurement)
 	issues   []string
 	info     []SheetInfo
 }
@@ -64,6 +67,15 @@ func parseAll(sheets map[string][][]string) parsed {
 		case "pipeline":
 			n := p.extractPipeline(rows[hi+1:], idx, seenPipe)
 			p.info = append(p.info, SheetInfo{Name: name, Kind: "pipeline", Rows: n})
+		case "pr_po":
+			n := p.extractPurchase(rows[hi+1:], idx, "po")
+			p.info = append(p.info, SheetInfo{Name: name, Kind: "pr_po", Rows: n})
+		case "pr_invoice":
+			n := p.extractPurchase(rows[hi+1:], idx, "invoice")
+			p.info = append(p.info, SheetInfo{Name: name, Kind: "pr_invoice", Rows: n})
+		case "pr_payment":
+			n := p.extractPayment(rows[hi+1:], idx)
+			p.info = append(p.info, SheetInfo{Name: name, Kind: "pr_payment", Rows: n})
 		default:
 			p.info = append(p.info, SheetInfo{Name: name, Kind: "skipped", Rows: 0})
 		}
@@ -78,6 +90,8 @@ func parseAll(sheets map[string][][]string) parsed {
 var headerTokens = []string{
 	"gp", "proyek", "konsumen", "blok", "plafon", "dp", "bank", "cara bayar",
 	"tgl akad", "bulan", "tahun", "sales", "status", "tahap", "booking",
+	// procurement (PR) headers
+	"pemasok", "kuantitas", "faktur", "terutang", "bayar", "bukti", "barang", "total harga",
 }
 
 // findHeader scans the first rows for the one that looks most like a header.
@@ -176,6 +190,20 @@ func classify(c colIndex) string {
 	hasAkadDate := c.first([]string{"akad"}) >= 0 || c.first([]string{"bulan"}) >= 0
 	if hasPlafon && hasAkadDate {
 		return "akad"
+	}
+	// Procurement (PR) tabs. Payment has no item quantity but carries a
+	// terutang/bukti column; PO vs invoice both have quantity — an invoice
+	// references a faktur number, a PO does not.
+	if c.first([]string{"terutang"}) >= 0 || c.first([]string{"bukti"}) >= 0 {
+		return "pr_payment"
+	}
+	if c.first([]string{"kuantitas"}) >= 0 {
+		if c.first([]string{"faktur"}) >= 0 {
+			return "pr_invoice"
+		}
+		if c.first([]string{"pemasok"}) >= 0 {
+			return "pr_po"
+		}
 	}
 	if c.first([]string{"tahap"}) >= 0 || c.first([]string{"status", "dp"}) >= 0 ||
 		c.first([]string{"pemberkasan"}) >= 0 {
