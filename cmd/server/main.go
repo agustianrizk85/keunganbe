@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"greenpark/finance/internal/auth"
+	"greenpark/finance/internal/authmw"
 	"greenpark/finance/internal/config"
 	"greenpark/finance/internal/gsheets"
 	"greenpark/finance/internal/repository"
@@ -68,6 +69,10 @@ func main() {
 		log.Printf("finance: AR ingest enabled (%d project sheets)", len(arSources))
 	}
 	handler := httptransport.NewHandler(svc, authSvc, syncClient, cfg.SheetID, cfg.PRSheetID, arSources, cfg.SyncSec)
+	if v := authmw.New(authmw.Options{JWKSURL: os.Getenv("AUTH_JWKS_URL"), Issuer: os.Getenv("AUTH_ISSUER")}); v != nil {
+		handler.SetSSO(v)
+		log.Printf("finance: SSO token acceptance enabled (jwks=%s)", os.Getenv("AUTH_JWKS_URL"))
+	}
 	router := httptransport.NewRouter(handler, cfg.AllowOrigin)
 
 	// Realtime push + background auto-sync scheduler.
