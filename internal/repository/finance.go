@@ -49,4 +49,39 @@ type FinanceRepository interface {
 	Users() []domain.User
 	UserByUsername(username string) (domain.User, error)
 	UserByID(id string) (domain.User, error)
+
+	// transactional purchasing — master data (create assigns id + timestamps,
+	// update preserves id + createdAt, all writes bump the revision).
+	Vendors() []domain.Vendor
+	CreateVendor(v domain.Vendor) (domain.Vendor, error)
+	UpdateVendor(id string, v domain.Vendor) (domain.Vendor, error)
+	DeleteVendor(id string) error
+
+	ProdukList() []domain.Produk
+	CreateProduk(p domain.Produk) (domain.Produk, error)
+	UpdateProduk(id string, p domain.Produk) (domain.Produk, error)
+	DeleteProduk(id string) error
+
+	KaryawanList() []domain.Karyawan
+	CreateKaryawan(k domain.Karyawan) (domain.Karyawan, error)
+	UpdateKaryawan(id string, k domain.Karyawan) (domain.Karyawan, error)
+	DeleteKaryawan(id string) error
+
+	SLAList() []domain.SLAItem
+	CreateSLA(s domain.SLAItem) (domain.SLAItem, error)
+	UpdateSLA(id string, s domain.SLAItem) (domain.SLAItem, error)
+	DeleteSLA(id string) error
+
+	// transactional purchasing — PR/PO workflow
+	PRList() []domain.PurchaseRequest
+	PRByID(id string) (domain.PurchaseRequest, error)
+	CreatePR(pr domain.PurchaseRequest) (domain.PurchaseRequest, error)
+	UpdatePR(id string, pr domain.PurchaseRequest) (domain.PurchaseRequest, error)
+	DeletePR(id string) error
+
+	POListAll() []domain.PurchaseOrder
+	POByID(id string) (domain.PurchaseOrder, error)
+	CreatePO(po domain.PurchaseOrder) (domain.PurchaseOrder, error)
+	UpdatePO(id string, po domain.PurchaseOrder) (domain.PurchaseOrder, error)
+	DeletePO(id string) error
 }

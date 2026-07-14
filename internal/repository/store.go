@@ -22,6 +22,15 @@ type state struct {
 	History    []importEntry     `json:"history"`
 	Rev        int64             `json:"rev"`
 	Users      []storeUser       `json:"users"`
+
+	// Transactional purchasing module (master data + PR/PO workflow). These are
+	// user-created records living in the same JSON blob (no SQL tables).
+	Vendors  []domain.Vendor          `json:"vendors"`
+	Produk   []domain.Produk          `json:"produk"`
+	Karyawan []domain.Karyawan        `json:"karyawan"`
+	SLA      []domain.SLAItem         `json:"sla"`
+	PRs      []domain.PurchaseRequest `json:"purchaseRequests"`
+	POs      []domain.PurchaseOrder   `json:"purchaseOrders"`
 }
 
 // importEntry is one history record plus the snapshot of the dashboard as it was
@@ -81,6 +90,12 @@ func seedState() *state {
 		Purchasing: domain.EmptyPurchasing(),
 		History:    []importEntry{},
 		Users:      seedUsers(),
+		Vendors:    []domain.Vendor{},
+		Produk:     []domain.Produk{},
+		Karyawan:   []domain.Karyawan{},
+		SLA:        []domain.SLAItem{},
+		PRs:        []domain.PurchaseRequest{},
+		POs:        []domain.PurchaseOrder{},
 	}
 }
 
@@ -110,6 +125,26 @@ func load(path string) (*state, error) {
 	// the existing view across once so the dashboard keeps showing it pre-resync.
 	if s.Purchasing.IsEmpty() && !s.Data.Purchasing.IsEmpty() {
 		s.Purchasing = s.Data.Purchasing
+	}
+	// Ensure the transactional purchasing slices are non-nil so their JSON stays
+	// "[]" (not null) and appends are safe on states written before this module.
+	if s.Vendors == nil {
+		s.Vendors = []domain.Vendor{}
+	}
+	if s.Produk == nil {
+		s.Produk = []domain.Produk{}
+	}
+	if s.Karyawan == nil {
+		s.Karyawan = []domain.Karyawan{}
+	}
+	if s.SLA == nil {
+		s.SLA = []domain.SLAItem{}
+	}
+	if s.PRs == nil {
+		s.PRs = []domain.PurchaseRequest{}
+	}
+	if s.POs == nil {
+		s.POs = []domain.PurchaseOrder{}
 	}
 	return s, nil
 }

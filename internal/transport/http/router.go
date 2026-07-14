@@ -56,5 +56,51 @@ func NewRouter(h *Handler, allowOrigin string) http.Handler {
 	mux.HandleFunc("POST /api/import/reset", h.requireAdmin(h.importReset))
 	mux.HandleFunc("POST /api/import/rollback/{id}", h.requireAdmin(h.importRollback))
 
+	// ---- transactional purchasing: master data (authenticated) ----
+	mux.HandleFunc("GET /api/vendors", h.requireAuth(h.vendorsList))
+	mux.HandleFunc("POST /api/vendors", h.requireAuth(h.vendorCreate))
+	mux.HandleFunc("PUT /api/vendors/{id}", h.requireAuth(h.vendorUpdate))
+	mux.HandleFunc("DELETE /api/vendors/{id}", h.requireAuth(h.vendorDelete))
+
+	mux.HandleFunc("GET /api/produk", h.requireAuth(h.produkList))
+	mux.HandleFunc("POST /api/produk", h.requireAuth(h.produkCreate))
+	mux.HandleFunc("PUT /api/produk/{id}", h.requireAuth(h.produkUpdate))
+	mux.HandleFunc("DELETE /api/produk/{id}", h.requireAuth(h.produkDelete))
+
+	mux.HandleFunc("GET /api/karyawan", h.requireAuth(h.karyawanList))
+	mux.HandleFunc("POST /api/karyawan", h.requireAuth(h.karyawanCreate))
+	mux.HandleFunc("PUT /api/karyawan/{id}", h.requireAuth(h.karyawanUpdate))
+	mux.HandleFunc("DELETE /api/karyawan/{id}", h.requireAuth(h.karyawanDelete))
+
+	mux.HandleFunc("GET /api/sla", h.requireAuth(h.slaList))
+	mux.HandleFunc("POST /api/sla", h.requireAuth(h.slaCreate))
+	mux.HandleFunc("PUT /api/sla/{id}", h.requireAuth(h.slaUpdate))
+	mux.HandleFunc("DELETE /api/sla/{id}", h.requireAuth(h.slaDelete))
+
+	// ---- transactional purchasing: Purchase Request (any division may submit/
+	// approve; department-scoped authorization enforced in the service layer) ----
+	mux.HandleFunc("GET /api/pr", h.requireAnyDivisionAuth(h.prList))
+	mux.HandleFunc("GET /api/pr/{id}", h.requireAnyDivisionAuth(h.prGet))
+	mux.HandleFunc("POST /api/pr", h.requireAnyDivisionAuth(h.prCreate))
+	mux.HandleFunc("PUT /api/pr/{id}", h.requireAnyDivisionAuth(h.prUpdate))
+	mux.HandleFunc("DELETE /api/pr/{id}", h.requireAuth(h.prDelete)) // finance-only, conservative
+	mux.HandleFunc("POST /api/pr/{id}/submit", h.requireAnyDivisionAuth(h.prSubmit))
+	mux.HandleFunc("POST /api/pr/{id}/approve", h.requireAnyDivisionAuth(h.prApprove))
+	mux.HandleFunc("POST /api/pr/{id}/reject", h.requireAnyDivisionAuth(h.prReject))
+
+	// ---- transactional purchasing: Purchase Order (authenticated) ----
+	mux.HandleFunc("GET /api/po", h.requireAuth(h.poList))
+	mux.HandleFunc("GET /api/po/{id}", h.requireAuth(h.poGet))
+	mux.HandleFunc("POST /api/po", h.requireAuth(h.poCreate))
+	mux.HandleFunc("PUT /api/po/{id}", h.requireAuth(h.poUpdate))
+	mux.HandleFunc("DELETE /api/po/{id}", h.requireAuth(h.poDelete))
+	mux.HandleFunc("POST /api/po/{id}/submit", h.requireAuth(h.poSubmit))
+	mux.HandleFunc("POST /api/po/{id}/approve", h.requireAuth(h.poApprove))
+	mux.HandleFunc("POST /api/po/{id}/reject", h.requireAuth(h.poReject))
+	mux.HandleFunc("POST /api/po/{id}/receive", h.requireAuth(h.poReceive))
+
+	// ---- laporan register (authenticated) ----
+	mux.HandleFunc("GET /api/purchasing/register", h.requireAuth(h.purchasingRegister))
+
 	return chain(mux, logger, cors(allowOrigin))
 }

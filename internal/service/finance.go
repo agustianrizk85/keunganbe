@@ -56,6 +56,47 @@ type FinanceService interface {
 	// lifecycle
 	ResetData(by string) (domain.ImportRecord, error)
 	RollbackImport(id string) (domain.ImportRecord, error)
+
+	// transactional purchasing — master data
+	Vendors() []domain.Vendor
+	CreateVendor(v domain.Vendor) (domain.Vendor, error)
+	UpdateVendor(id string, v domain.Vendor) (domain.Vendor, error)
+	DeleteVendor(id string) error
+
+	ProdukList() []domain.Produk
+	CreateProduk(p domain.Produk) (domain.Produk, error)
+	UpdateProduk(id string, p domain.Produk) (domain.Produk, error)
+	DeleteProduk(id string) error
+
+	KaryawanList() []domain.Karyawan
+	CreateKaryawan(k domain.Karyawan) (domain.Karyawan, error)
+	UpdateKaryawan(id string, k domain.Karyawan) (domain.Karyawan, error)
+	DeleteKaryawan(id string) error
+
+	SLAList() []domain.SLAItem
+	CreateSLA(s domain.SLAItem) (domain.SLAItem, error)
+	UpdateSLA(id string, s domain.SLAItem) (domain.SLAItem, error)
+	DeleteSLA(id string) error
+
+	// transactional purchasing — PR/PO workflow
+	PRList(status string) []domain.PurchaseRequest
+	PRByID(id string) (domain.PurchaseRequest, error)
+	CreatePR(pr domain.PurchaseRequest, submit bool, by string) (domain.PurchaseRequest, error)
+	UpdatePR(id string, pr domain.PurchaseRequest) (domain.PurchaseRequest, error)
+	DeletePR(id string) error
+	SubmitPR(id string) (domain.PurchaseRequest, error)
+	ApprovePR(id string, approver domain.Approver, note string) (domain.PurchaseRequest, error)
+	RejectPR(id string, approver domain.Approver, note string) (domain.PurchaseRequest, error)
+
+	POList(status string) []domain.PurchaseOrder
+	POByID(id string) (domain.PurchaseOrder, error)
+	CreatePO(po domain.PurchaseOrder, submit bool, by string) (domain.PurchaseOrder, error)
+	UpdatePO(id string, po domain.PurchaseOrder) (domain.PurchaseOrder, error)
+	DeletePO(id string) error
+	SubmitPO(id string) (domain.PurchaseOrder, error)
+	ApprovePO(id string, approver domain.Approver, note string) (domain.PurchaseOrder, error)
+	RejectPO(id string, approver domain.Approver, note string) (domain.PurchaseOrder, error)
+	ReceivePO(id, tanggalDiterima string, bastSigned bool, keterangan string) (domain.PurchaseOrder, error)
 }
 
 type financeService struct {

@@ -56,6 +56,26 @@ func (h *Handler) ssoUser(tok string) (domain.User, bool) {
 	return domain.User{ID: "sso:" + c.Subject, Username: c.Username, Name: c.Name, Role: role}, true
 }
 
+// ssoUserAnyDivision verifies an SSO token WITHOUT requiring finance-department
+// access — it accepts any valid, unexpired token from ANY division. Used only for
+// the Purchase Request routes, which are meant to be usable dashboard-wide (any
+// staff can submit a PR; approval scoping is enforced separately in the service
+// layer by department). Returns false when SSO is off or the token is invalid.
+func (h *Handler) ssoUserAnyDivision(tok string) (domain.User, bool) {
+	if h.sso == nil || tok == "" {
+		return domain.User{}, false
+	}
+	c, err := h.sso.Verify(tok)
+	if err != nil {
+		return domain.User{}, false
+	}
+	role := domain.RoleViewer
+	if c.Super {
+		role = domain.RoleAdmin
+	}
+	return domain.User{ID: "sso:" + c.Subject, Username: c.Username, Name: c.Name, Role: role}, true
+}
+
 // NewHandler creates a Handler bound to the service, auth, and (optional) Google
 // Sheets sync client. prSheetID is the default procurement (PR) spreadsheet for
 // the independent purchasing sync; arSheets lists the per-project AR input
@@ -94,6 +114,27 @@ func (h *Handler) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		u, err := h.auth.Validate(tok)
 		if err != nil {
 			su, ok := h.ssoUser(tok) // fall back to the unified SSO login token
+			if !ok {
+				writeError(w, http.StatusUnauthorized, err.Error())
+				return
+			}
+			u = su
+		}
+		next(w, r.WithContext(context.WithValue(r.Context(), userCtxKey, u)))
+	}
+}
+
+// requireAnyDivisionAuth wraps a handler, accepting a valid session from ANY
+// division's SSO token (in addition to the native finance token) — unlike
+// requireAuth, it does not require finance-department access. Used only for the
+// Purchase Request routes so any division's staff can submit/approve PRs;
+// department-scoped authorization is enforced in the service layer.
+func (h *Handler) requireAnyDivisionAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tok := bearer(r)
+		u, err := h.auth.Validate(tok)
+		if err != nil {
+			su, ok := h.ssoUserAnyDivision(tok) // fall back to any-division SSO login token
 			if !ok {
 				writeError(w, http.StatusUnauthorized, err.Error())
 				return
