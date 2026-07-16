@@ -40,7 +40,7 @@ All monetary values are expressed in **millions of Rupiah (Rp juta)**.
 ## Run
 
 ```bash
-cd backend/finance
+cd backend/keungan
 go run ./cmd/server
 # finance API listening on http://localhost:8084
 ```
